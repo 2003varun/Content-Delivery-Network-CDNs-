@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState } from 'react';
@@ -20,6 +21,7 @@ import { suggestAlternativeContent, SuggestAlternativeContentInput, SuggestAlter
 import { useForm, SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useToast } from '@/hooks/use-toast';
 
 const formSchema = z.object({
   initialRequest: z.string().min(10, { message: "Please describe your content idea in at least 10 characters." }),
@@ -31,8 +33,9 @@ export function ContentSuggestionTool() {
   const [suggestions, setSuggestions] = useState<SuggestAlternativeContentOutput | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
 
-  const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, formState: { errors }, setValue } = useForm<FormData>({
     resolver: zodResolver(formSchema),
   });
 
@@ -51,6 +54,15 @@ export function ContentSuggestionTool() {
     }
   };
 
+  const handleSuggestionClick = (content: string) => {
+    setValue("initialRequest", content);
+    toast({
+      title: "Suggestion Copied",
+      description: "The content idea has been copied to the textarea.",
+      duration: 3000,
+    });
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
@@ -63,7 +75,7 @@ export function ContentSuggestionTool() {
         <DialogHeader>
           <DialogTitle className="text-xl">Content Caching Advisor</DialogTitle>
           <DialogDescription>
-            Enter your video content idea, and our AI will suggest alternatives that are easily cacheable on a CDN.
+            Enter your video content idea, and our AI will suggest alternatives that are easily cacheable on a CDN. Click a suggestion to edit it.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="grid gap-6 py-4">
@@ -102,7 +114,13 @@ export function ContentSuggestionTool() {
           <div className="mt-6 space-y-4 max-h-[300px] overflow-y-auto pr-2">
             <h3 className="text-lg font-semibold text-foreground">AI Suggestions:</h3>
             {suggestions.suggestions.map((suggestion, index) => (
-              <Card key={index} className="bg-background/50 border-border rounded-md shadow">
+              <Card 
+                key={index} 
+                className="bg-background/50 border-border rounded-md shadow cursor-pointer hover:bg-accent/20 transition-colors"
+                onClick={() => handleSuggestionClick(suggestion.content)}
+                tabIndex={0} // Make it focusable
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSuggestionClick(suggestion.content);}} // Make it keyboard accessible
+              >
                 <CardHeader className="p-4">
                   <CardTitle className="text-md text-primary">{suggestion.content}</CardTitle>
                 </CardHeader>
