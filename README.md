@@ -1,6 +1,6 @@
 # 🚀 Firebase Studio - Next.js Starter
 
-![Project Banner](https://placehold.co/800x200?text=Firebase+Studio) <!-- Replace with your own banner -->
+![Project Banner](https://placehold.co/800x200?text=CDN ) <!-- Replace with your own banner -->
 
 [![License](https://img.shields.io/github/license/2003varun/Content-Delivery-Network-CDNs-?style=flat-square)](LICENSE)
 [![Last Commit](https://img.shields.io/github/last-commit/2003varun/Content-Delivery-Network-CDNs-?style=flat-square)](../../commits/main)
@@ -86,6 +86,3 @@ This project is licensed under the MIT License.
 
 ---
 
-## 📬 Contact
-
-Questions? Reach out via [GitHub Issues](../../issues) or email: your@email.com
