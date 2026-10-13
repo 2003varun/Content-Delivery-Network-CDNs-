@@ -55,53 +55,57 @@ export function VideoSelector({ videos, selectedVideoId, onSelectVideo, onSelect
   return (
     <div className={cn("w-full max-w-md space-y-4", className)}>
       <div>
-        <Label htmlFor="video-select" className="text-sm font-medium mb-2 block">Choose a Sample Video:</Label>
+        <Label htmlFor="video-select" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 block">
+          Choose a Sample Video:
+        </Label>
         <Select
           onValueChange={handleSampleVideoSelect}
           value={selectedVideoId || undefined}
           disabled={!!uploadedFileName}
         >
-          <SelectTrigger id="video-select" className="w-full bg-card text-card-foreground rounded-md shadow">
+          <SelectTrigger id="video-select" className="w-full bg-secondary/40 text-foreground border border-border/80 hover:border-slate-600 focus:ring-1 focus:ring-primary rounded-lg shadow-sm transition-colors">
             <SelectValue placeholder="Select a sample video" />
           </SelectTrigger>
-          <SelectContent className="bg-popover text-popover-foreground rounded-md shadow-lg">
+          <SelectContent className="bg-popover text-popover-foreground border-border rounded-lg shadow-xl">
             {videos.map((video) => (
-              <SelectItem key={video.id} value={video.id} className="hover:bg-accent focus:bg-accent">
+              <SelectItem key={video.id} value={video.id} className="hover:bg-accent focus:bg-accent cursor-pointer">
                 {video.title}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-         {uploadedFileName && (
-          <p className="text-xs text-muted-foreground mt-1">Sample video selection disabled while local file is active.</p>
+        {uploadedFileName && (
+          <p className="text-xs text-muted-foreground mt-1.5">Sample video selection disabled while local file is active.</p>
         )}
       </div>
 
-      <div className="my-3 flex items-center">
-        <div className="flex-grow border-t border-muted"></div>
-        <span className="mx-3 flex-shrink text-xs uppercase text-muted-foreground">Or</span>
-        <div className="flex-grow border-t border-muted"></div>
+      <div className="my-2.5 flex items-center">
+        <div className="flex-grow border-t border-border/60"></div>
+        <span className="mx-3 flex-shrink text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Or</span>
+        <div className="flex-grow border-t border-border/60"></div>
       </div>
 
       <div>
-        <Label htmlFor="local-file-select" className="text-sm font-medium mb-2 block">Upload a Local Video File:</Label>
+        <Label htmlFor="local-file-select" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 block">
+          Upload a Local Video File:
+        </Label>
         <Input
           id="local-file-select"
           type="file"
           accept="video/*"
           ref={fileInputRef}
           onChange={handleFileChange}
-          className="w-full bg-card text-card-foreground rounded-md shadow file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 cursor-pointer"
+          className="w-full bg-secondary/40 text-foreground border border-border/80 hover:border-slate-600 rounded-lg shadow-sm file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 cursor-pointer transition-colors text-xs sm:text-sm"
         />
         {uploadedFileName && (
-          <div className="flex items-center justify-between mt-2">
+          <div className="flex items-center justify-between mt-2 pt-1 border-t border-border/40">
             <p className="text-xs text-muted-foreground truncate max-w-[280px]">Playing: {uploadedFileName}</p>
             <Button
               type="button"
               variant="outline"
               size="sm"
               onClick={handleClear}
-              className="h-7 px-2 text-xs"
+              className="h-7 px-2.5 text-xs border-border/80 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30 transition-colors"
             >
               Clear
             </Button>

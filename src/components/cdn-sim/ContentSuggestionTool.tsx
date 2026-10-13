@@ -66,31 +66,31 @@ export function ContentSuggestionTool() {
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="shadow hover:shadow-md transition-shadow">
-          <Lightbulb className="mr-2 h-4 w-4" />
+        <Button variant="outline" className="h-10 px-4 text-xs sm:text-sm font-medium border border-border/80 bg-secondary/40 text-foreground hover:bg-secondary/70 hover:border-slate-600 rounded-lg shadow-sm transition-all flex items-center gap-2">
+          <Lightbulb className="mr-1.5 h-4 w-4 text-amber-400" />
           Get Content Suggestions
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[600px] bg-card text-card-foreground rounded-lg shadow-xl">
+      <DialogContent className="sm:max-w-[580px] bg-card text-card-foreground border border-border/80 rounded-xl shadow-2xl p-6">
         <DialogHeader>
-          <DialogTitle className="text-xl">Content Caching Advisor</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="text-lg font-semibold tracking-tight text-foreground">Content Caching Advisor</DialogTitle>
+          <DialogDescription className="text-xs sm:text-sm text-muted-foreground mt-1 leading-relaxed">
             Enter your video content idea, and our AI will suggest alternatives that are easily cacheable on a CDN. Click a suggestion to edit it.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="grid gap-6 py-4">
-          <div className="grid gap-2">
-            <Label htmlFor="initialRequest" className="text-sm font-medium">Your Content Idea</Label>
+        <form onSubmit={handleSubmit(onSubmit)} className="grid gap-5 py-3">
+          <div className="grid gap-1.5">
+            <Label htmlFor="initialRequest" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Your Content Idea</Label>
             <Textarea
               id="initialRequest"
               placeholder="e.g., Live stream of a sports game, personalized video messages"
               {...register("initialRequest")}
-              className="min-h-[100px] bg-background border-input rounded-md shadow-sm focus:ring-primary"
+              className="min-h-[100px] bg-background/80 border-border text-foreground focus:ring-1 focus:ring-primary rounded-lg text-sm placeholder:text-muted-foreground/60"
             />
-            {errors.initialRequest && <p className="text-sm text-destructive">{errors.initialRequest.message}</p>}
+            {errors.initialRequest && <p className="text-xs text-destructive mt-1">{errors.initialRequest.message}</p>}
           </div>
           <DialogFooter>
-            <Button type="submit" disabled={isLoading} className="w-full sm:w-auto shadow hover:shadow-md transition-shadow">
+            <Button type="submit" disabled={isLoading} className="w-full sm:w-auto shadow-sm hover:shadow transition-shadow rounded-lg text-sm font-medium">
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -104,30 +104,26 @@ export function ContentSuggestionTool() {
         </form>
 
         {error && (
-          <div className="mt-4 p-3 bg-destructive/10 border border-destructive text-destructive rounded-md flex items-center gap-2">
-            <AlertTriangle size={18} />
-            <p>{error}</p>
+          <div className="mt-3 p-3 bg-destructive/10 border border-destructive/30 text-destructive text-sm rounded-lg flex items-center gap-2.5">
+            <AlertTriangle size={18} className="shrink-0" />
+            <p className="text-xs">{error}</p>
           </div>
         )}
 
         {suggestions && suggestions.suggestions.length > 0 && (
-          <div className="mt-6 space-y-4 max-h-[300px] overflow-y-auto pr-2">
-            <h3 className="text-lg font-semibold text-foreground">AI Suggestions:</h3>
+          <div className="mt-5 space-y-3 max-h-[280px] overflow-y-auto pr-1">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">AI Suggestions:</h3>
             {suggestions.suggestions.map((suggestion, index) => (
-              <Card 
-                key={index} 
-                className="bg-background/50 border-border rounded-md shadow cursor-pointer hover:bg-accent/20 transition-colors"
+              <div
+                key={index}
+                className="bg-secondary/40 border border-border/70 rounded-lg shadow-sm cursor-pointer hover:bg-secondary/70 hover:border-primary/40 transition-all p-3.5 space-y-1 focus:outline-none focus:ring-1 focus:ring-primary"
                 onClick={() => handleSuggestionClick(suggestion.content)}
-                tabIndex={0} // Make it focusable
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSuggestionClick(suggestion.content);}} // Make it keyboard accessible
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSuggestionClick(suggestion.content); }}
               >
-                <CardHeader className="p-4">
-                  <CardTitle className="text-md text-primary">{suggestion.content}</CardTitle>
-                </CardHeader>
-                <CardContent className="p-4 pt-0">
-                  <p className="text-sm text-muted-foreground">{suggestion.reason}</p>
-                </CardContent>
-              </Card>
+                <h4 className="text-sm font-semibold text-primary">{suggestion.content}</h4>
+                <p className="text-xs text-muted-foreground leading-relaxed">{suggestion.reason}</p>
+              </div>
             ))}
           </div>
         )}

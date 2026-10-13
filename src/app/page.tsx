@@ -137,29 +137,33 @@ export default function CdnSimPage() {
   const currentLqSrc = uploadedFile ? undefined : selectedVideo?.lqSrc;
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col items-center p-4 md:p-8">
-      <header className="w-full max-w-6xl mb-8 text-center md:text-left">
-        <div className="flex items-center justify-center md:justify-start gap-3 mb-2">
-         <div className="p-2 bg-primary rounded-md">
-            <BarChart3 className="h-8 w-8 text-primary-foreground" />
-          </div>
-          <h1 className="text-4xl font-bold text-primary">CDN Simulator</h1>
+    <div className="min-h-screen bg-background text-foreground flex flex-col items-center px-4 py-8 md:px-8 md:py-10">
+      <header className="w-full max-w-6xl mb-8">
+        <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium bg-secondary/80 border border-border/80 text-muted-foreground mb-3 shadow-sm">
+          <span className="h-1.5 w-1.5 rounded-full bg-teal-400" />
+          <span>Interactive Edge vs Origin Streaming</span>
         </div>
-        <p className="text-muted-foreground text-lg">
-          Experience the difference a Content Delivery Network makes and explore cache-friendly content.
+        <div className="flex items-center gap-3 mb-2">
+          <div className="p-2 bg-primary/10 border border-primary/20 rounded-lg text-primary">
+            <BarChart3 className="h-7 w-7" />
+          </div>
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground">CDN Simulator</h1>
+        </div>
+        <p className="text-muted-foreground text-sm md:text-base max-w-2xl leading-relaxed">
+          Experience the performance impact of edge caching versus high-latency origin delivery with real-time adaptive quality switching.
         </p>
       </header>
 
       <main className="w-full max-w-6xl space-y-8">
-        <Card className="shadow-xl rounded-xl overflow-hidden">
-          <CardHeader className="bg-card-foreground/5 p-6">
-            <CardTitle className="text-2xl">Video Streaming Simulation</CardTitle>
-            <CardDescription>
+        <Card className="border border-border/80 bg-card/80 backdrop-blur-sm shadow-xl shadow-black/20 rounded-xl overflow-hidden">
+          <CardHeader className="border-b border-border/60 bg-muted/20 px-6 py-5">
+            <CardTitle className="text-xl font-semibold tracking-tight text-foreground">Video Streaming Simulation</CardTitle>
+            <CardDescription className="text-sm text-muted-foreground mt-1">
               Select a sample video or upload your own to compare playback from a simulated local (fast) server and a remote (higher latency) server.
             </CardDescription>
           </CardHeader>
           <CardContent className="p-6 space-y-6">
-            <div className="flex flex-col lg:flex-row justify-between items-start gap-6"> {/* items-start for better alignment */}
+            <div className="flex flex-col lg:flex-row justify-between items-start gap-6">
               <VideoSelector
                 videos={sampleVideos}
                 selectedVideoId={selectedVideo?.id || null}
@@ -167,11 +171,10 @@ export default function CdnSimPage() {
                 onSelectLocalFile={handleLocalFileSelect}
                 onClearLocalFile={handleClearLocalFile}
                 uploadedFileName={uploadedFile?.name || null}
-                className="flex-shrink-0 w-full lg:w-auto" // Control width
+                className="flex-shrink-0 w-full lg:w-auto"
               />
-               <ContentSuggestionTool />
+              <ContentSuggestionTool />
             </div>
-
 
             {(selectedVideo || uploadedFile) && localVideoSrc && remoteVideoSrc ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
@@ -183,7 +186,7 @@ export default function CdnSimPage() {
                   title={localPlayerTitle}
                   isRemote={false}
                   onSlowBuffering={() => handleSlowBuffering('local')}
-                  className="border-2 border-green-500"
+                  className="border border-teal-500/30 hover:border-teal-500/50 shadow-md transition-all"
                 />
                 <VideoPlayer
                   key={`remote-${selectedVideo?.id || uploadedFile?.name || 'player'}-${remoteVideoSrc}`}
@@ -193,7 +196,7 @@ export default function CdnSimPage() {
                   title={remotePlayerTitle}
                   isRemote={true}
                   onSlowBuffering={() => handleSlowBuffering('remote')}
-                  className="border-2 border-orange-500"
+                  className="border border-amber-500/30 hover:border-amber-500/50 shadow-md transition-all"
                 />
               </div>
             ) : (
@@ -203,37 +206,36 @@ export default function CdnSimPage() {
             )}
           </CardContent>
         </Card>
-        
-        <Separator className="my-8" />
 
-        <Card className="shadow-xl rounded-xl overflow-hidden">
-            <CardHeader className="bg-card-foreground/5 p-6">
-                <CardTitle className="text-2xl">How it Works</CardTitle>
-            </CardHeader>
-            <CardContent className="p-6 space-y-4 text-sm text-muted-foreground">
-                <p>
-                    <strong className="text-foreground">Video Selection:</strong> Choose from a list of sample videos or upload your own video file.
-                </p>
-                <p>
-                    <strong className="text-foreground">Dual Display:</strong> Two video players are shown.
-                    The <strong className="text-green-600">"{uploadedFile ? `Local: ${uploadedFile.name.substring(0,20)}...` : 'Local Server'}"</strong> player simulates a fast, nearby server (like a CDN edge).
-                    The <strong className="text-orange-600">"{uploadedFile ? `Remote: ${uploadedFile.name.substring(0,20)}...` : 'Remote Server'}"</strong> player simulates a distant server with higher latency.
-                </p>
-                <p>
-                    <strong className="text-foreground">Latency Simulation:</strong> The "Remote Server" video has an artificial delay before playback starts to mimic network latency. This applies even to uploaded local files to demonstrate the concept.
-                </p>
-                <p>
-                    <strong className="text-foreground">Adaptive Quality:</strong> For sample videos, if a player buffers for too long (more than 5 seconds), it will attempt to switch to a lower quality version and notify you. This demonstrates how CDNs and players can adapt. (Note: Adaptive quality is not available for uploaded local files as only one version is provided).
-                </p>
-                 <p>
-                    <strong className="text-foreground">Content Suggestions:</strong> Use the "Get Content Suggestions" tool to input your video idea. Our AI will provide alternatives that are easier to cache on a CDN, along with reasons why.
-                </p>
-            </CardContent>
+        <Separator className="my-8 border-border/60" />
+
+        <Card className="border border-border/80 bg-card/80 backdrop-blur-sm shadow-xl shadow-black/20 rounded-xl overflow-hidden">
+          <CardHeader className="border-b border-border/60 bg-muted/20 px-6 py-5">
+            <CardTitle className="text-xl font-semibold tracking-tight text-foreground">How it Works</CardTitle>
+          </CardHeader>
+          <CardContent className="p-6 space-y-3.5 text-sm text-muted-foreground leading-relaxed">
+            <p>
+              <strong className="text-foreground">Video Selection:</strong> Choose from a list of sample videos or upload your own video file.
+            </p>
+            <p>
+              <strong className="text-foreground">Dual Display:</strong> Two video players are shown.
+              The <strong className="text-teal-400">"{uploadedFile ? `Local: ${uploadedFile.name.substring(0, 20)}...` : 'Local Server'}"</strong> player simulates a fast, nearby server (like a CDN edge).
+              The <strong className="text-amber-400">"{uploadedFile ? `Remote: ${uploadedFile.name.substring(0, 20)}...` : 'Remote Server'}"</strong> player simulates a distant server with higher latency.
+            </p>
+            <p>
+              <strong className="text-foreground">Latency Simulation:</strong> The "Remote Server" video has an artificial delay before playback starts to mimic network latency. This applies even to uploaded local files to demonstrate the concept.
+            </p>
+            <p>
+              <strong className="text-foreground">Adaptive Quality:</strong> For sample videos, if a player buffers for too long (more than 5 seconds), it will attempt to switch to a lower quality version and notify you. This demonstrates how CDNs and players can adapt. (Note: Adaptive quality is not available for uploaded local files as only one version is provided).
+            </p>
+            <p>
+              <strong className="text-foreground">Content Suggestions:</strong> Use the "Get Content Suggestions" tool to input your video idea. Our AI will provide alternatives that are easier to cache on a CDN, along with reasons why.
+            </p>
+          </CardContent>
         </Card>
-
       </main>
 
-      <footer className="w-full max-w-6xl mt-12 py-6 text-center text-muted-foreground text-sm border-t">
+      <footer className="w-full max-w-6xl mt-12 py-6 text-center text-muted-foreground text-xs border-t border-border/60">
         <p>&copy; {new Date().getFullYear()} CDN Sim. Built with Next.js and Genkit.</p>
       </footer>
     </div>
