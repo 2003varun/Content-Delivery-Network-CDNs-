@@ -32,6 +32,7 @@ export function VideoPlayer({
   const [currentSrc, setCurrentSrc] = useState(videoSrc);
   const [isLoading, setIsLoading] = useState(true);
   const [isBufferingSlow, setIsBufferingSlow] = useState(false);
+  const isWaitingRef = useRef(false);
   const bufferingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
 
@@ -39,14 +40,28 @@ export function VideoPlayer({
     setCurrentSrc(videoSrc);
     setIsLoading(true);
     setIsBufferingSlow(false); // Reset slow buffering state on src change
+    isWaitingRef.current = false;
+    if (bufferingTimerRef.current) {
+      clearTimeout(bufferingTimerRef.current);
+      bufferingTimerRef.current = null;
+    }
   }, [videoSrc]);
 
   useEffect(() => {
     const videoElement = videoRef.current;
     if (!videoElement) return;
 
+    const clearBufferingTimer = () => {
+      if (bufferingTimerRef.current) {
+        clearTimeout(bufferingTimerRef.current);
+        bufferingTimerRef.current = null;
+      }
+    };
+
     const handleCanPlay = () => {
+      isWaitingRef.current = false;
       setIsLoading(false);
+      clearBufferingTimer();
       if (isRemote) {
         setTimeout(() => {
           videoElement.play().catch(error => console.error("Error playing remote video:", error));
@@ -57,26 +72,22 @@ export function VideoPlayer({
     };
 
     const handleWaiting = () => {
+      isWaitingRef.current = true;
       setIsLoading(true);
-      if (bufferingTimerRef.current) clearTimeout(bufferingTimerRef.current);
+      clearBufferingTimer();
       bufferingTimerRef.current = setTimeout(() => {
-        if (videoElement.paused || videoElement.ended || !isLoading) return; // Check if still buffering
+        if (!isWaitingRef.current || videoElement.paused || videoElement.ended) return; // Check if still buffering
         setIsBufferingSlow(true);
         if (onSlowBuffering && lqVideoSrc && currentSrc !== lqVideoSrc) {
           onSlowBuffering(videoId);
-          toast({
-            title: "Adaptive Quality Triggered",
-            description: `${title} is buffering slowly. Switched to lower quality.`,
-            variant: "default",
-          });
         } else if (lqVideoSrc && currentSrc === lqVideoSrc) {
-           toast({
+          toast({
             title: "Buffering Slowly",
             description: `${title} is buffering slowly even on lower quality.`,
             variant: "destructive",
           });
         } else {
-           toast({
+          toast({
             title: "Buffering Slowly",
             description: `${title} is buffering slowly. No lower quality available.`,
             variant: "destructive",
@@ -86,31 +97,36 @@ export function VideoPlayer({
     };
 
     const handlePlaying = () => {
+      isWaitingRef.current = false;
       setIsLoading(false);
       setIsBufferingSlow(false);
-      if (bufferingTimerRef.current) {
-        clearTimeout(bufferingTimerRef.current);
-        bufferingTimerRef.current = null;
-      }
+      clearBufferingTimer();
     };
-    
+
+    const handlePauseOrEnd = () => {
+      isWaitingRef.current = false;
+      clearBufferingTimer();
+    };
+
     videoElement.addEventListener('canplay', handleCanPlay);
     videoElement.addEventListener('waiting', handleWaiting);
     videoElement.addEventListener('playing', handlePlaying);
+    videoElement.addEventListener('pause', handlePauseOrEnd);
+    videoElement.addEventListener('ended', handlePauseOrEnd);
     videoElement.addEventListener('loadeddata', () => setIsLoading(false));
-
 
     // Autoplay muted is generally more reliable
     videoElement.muted = true; 
 
     return () => {
+      isWaitingRef.current = false;
       videoElement.removeEventListener('canplay', handleCanPlay);
       videoElement.removeEventListener('waiting', handleWaiting);
       videoElement.removeEventListener('playing', handlePlaying);
+      videoElement.removeEventListener('pause', handlePauseOrEnd);
+      videoElement.removeEventListener('ended', handlePauseOrEnd);
       videoElement.removeEventListener('loadeddata', () => setIsLoading(false));
-      if (bufferingTimerRef.current) {
-        clearTimeout(bufferingTimerRef.current);
-      }
+      clearBufferingTimer();
     };
   }, [currentSrc, isRemote, title, videoId, onSlowBuffering, lqVideoSrc, toast]);
 

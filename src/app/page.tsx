@@ -71,6 +71,25 @@ export default function CdnSimPage() {
     setRemoteVideoSrc(newObjectUrl); // Remote player also uses local file, latency is simulated by VideoPlayer
   };
 
+  const handleClearLocalFile = () => {
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+    setUploadedFile(null);
+
+    const defaultVideo = sampleVideos[0];
+    if (defaultVideo) {
+      setSelectedVideo(defaultVideo);
+      setLocalVideoSrc(defaultVideo.hqSrc);
+      setRemoteVideoSrc(defaultVideo.hqSrc);
+    } else {
+      setSelectedVideo(null);
+      setLocalVideoSrc(undefined);
+      setRemoteVideoSrc(undefined);
+    }
+  };
+
   const handleSlowBuffering = useCallback((playerId: 'local' | 'remote') => {
     const playerTitle = playerId === 'local' ? (uploadedFile ? `Local: ${uploadedFile.name}` : 'Local Server') : (uploadedFile ? `Remote: ${uploadedFile.name}` : 'Remote Server');
 
@@ -146,6 +165,7 @@ export default function CdnSimPage() {
                 selectedVideoId={selectedVideo?.id || null}
                 onSelectVideo={handleVideoSelect}
                 onSelectLocalFile={handleLocalFileSelect}
+                onClearLocalFile={handleClearLocalFile}
                 uploadedFileName={uploadedFile?.name || null}
                 className="flex-shrink-0 w-full lg:w-auto" // Control width
               />

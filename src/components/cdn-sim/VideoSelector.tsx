@@ -20,11 +20,12 @@ interface VideoSelectorProps {
   selectedVideoId: string | null;
   onSelectVideo: (videoId: string) => void;
   onSelectLocalFile: (file: File) => void; // New prop
+  onClearLocalFile?: () => void;
   className?: string;
   uploadedFileName?: string | null;
 }
 
-export function VideoSelector({ videos, selectedVideoId, onSelectVideo, onSelectLocalFile, className, uploadedFileName }: VideoSelectorProps) {
+export function VideoSelector({ videos, selectedVideoId, onSelectVideo, onSelectLocalFile, onClearLocalFile, className, uploadedFileName }: VideoSelectorProps) {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -40,7 +41,16 @@ export function VideoSelector({ videos, selectedVideoId, onSelectVideo, onSelect
     if (fileInputRef.current) {
       fileInputRef.current.value = ""; // Clear file input display
     }
-  }
+  };
+
+  const handleClear = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+    if (onClearLocalFile) {
+      onClearLocalFile();
+    }
+  };
 
   return (
     <div className={cn("w-full max-w-md space-y-4", className)}>
@@ -84,7 +94,18 @@ export function VideoSelector({ videos, selectedVideoId, onSelectVideo, onSelect
           className="w-full bg-card text-card-foreground rounded-md shadow file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 cursor-pointer"
         />
         {uploadedFileName && (
-          <p className="text-xs text-muted-foreground mt-1">Playing: {uploadedFileName}</p>
+          <div className="flex items-center justify-between mt-2">
+            <p className="text-xs text-muted-foreground truncate max-w-[280px]">Playing: {uploadedFileName}</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleClear}
+              className="h-7 px-2 text-xs"
+            >
+              Clear
+            </Button>
+          </div>
         )}
       </div>
     </div>
