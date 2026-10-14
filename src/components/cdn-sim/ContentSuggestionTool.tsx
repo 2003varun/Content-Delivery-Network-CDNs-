@@ -66,12 +66,12 @@ export function ContentSuggestionTool() {
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="h-10 px-4 text-xs sm:text-sm font-medium border border-border/80 bg-secondary/40 text-foreground hover:bg-secondary/70 hover:border-slate-600 rounded-lg shadow-sm transition-all flex items-center gap-2">
-          <Lightbulb className="mr-1.5 h-4 w-4 text-amber-400" />
+        <Button variant="outline" className="h-10 px-4 text-xs sm:text-sm font-medium border border-border bg-white text-foreground hover:bg-slate-50 hover:border-slate-300 rounded-lg shadow-sm transition-all flex items-center gap-2">
+          <Lightbulb className="mr-1.5 h-4 w-4 text-amber-500" />
           Get Content Suggestions
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[580px] bg-card text-card-foreground border border-border/80 rounded-xl shadow-2xl p-6">
+      <DialogContent className="sm:max-w-[580px] bg-white text-card-foreground border border-border rounded-xl shadow-xl p-6">
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold tracking-tight text-foreground">Content Caching Advisor</DialogTitle>
           <DialogDescription className="text-xs sm:text-sm text-muted-foreground mt-1 leading-relaxed">
@@ -85,12 +85,12 @@ export function ContentSuggestionTool() {
               id="initialRequest"
               placeholder="e.g., Live stream of a sports game, personalized video messages"
               {...register("initialRequest")}
-              className="min-h-[100px] bg-background/80 border-border text-foreground focus:ring-1 focus:ring-primary rounded-lg text-sm placeholder:text-muted-foreground/60"
+              className="min-h-[100px] bg-slate-50/60 border border-border text-foreground focus:ring-2 focus:ring-primary/40 focus:border-primary rounded-lg text-sm placeholder:text-muted-foreground/60"
             />
             {errors.initialRequest && <p className="text-xs text-destructive mt-1">{errors.initialRequest.message}</p>}
           </div>
           <DialogFooter>
-            <Button type="submit" disabled={isLoading} className="w-full sm:w-auto shadow-sm hover:shadow transition-shadow rounded-lg text-sm font-medium">
+            <Button type="submit" disabled={isLoading} className="w-full sm:w-auto shadow-sm hover:shadow transition-shadow rounded-lg text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90">
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -116,7 +116,7 @@ export function ContentSuggestionTool() {
             {suggestions.suggestions.map((suggestion, index) => (
               <div
                 key={index}
-                className="bg-secondary/40 border border-border/70 rounded-lg shadow-sm cursor-pointer hover:bg-secondary/70 hover:border-primary/40 transition-all p-3.5 space-y-1 focus:outline-none focus:ring-1 focus:ring-primary"
+                className="bg-slate-50 border border-border rounded-lg shadow-sm cursor-pointer hover:bg-blue-50/50 hover:border-blue-300 transition-all p-3.5 space-y-1 focus:outline-none focus:ring-2 focus:ring-primary"
                 onClick={() => handleSuggestionClick(suggestion.content)}
                 tabIndex={0}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSuggestionClick(suggestion.content); }}

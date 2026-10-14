@@ -8,49 +8,58 @@ body {
 
 @layer base {
   :root {
-    --background: 222 47% 8%; /* #0b0f19 Dark navy background */
-    --foreground: 213 31% 91%; /* #e2e8f0 Slate 200 text */
+    /* Pale blue-grey background: #F5F8FC */
+    --background: 214 54% 97.5%;
+    /* Deep slate/navy primary text: #172554 */
+    --foreground: 226 57% 21%;
 
-    --card: 222 44% 11%; /* #101726 Elevated charcoal/navy card */
-    --card-foreground: 213 31% 91%;
+    /* Pure white cards and panels: #FFFFFF */
+    --card: 0 0% 100%;
+    --card-foreground: 226 57% 21%;
 
-    --popover: 222 44% 13%; /* #121a2b Popover surface */
-    --popover-foreground: 213 31% 91%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 226 57% 21%;
 
-    --primary: 217 85% 60%; /* #3b82f6 Muted blue primary accent */
+    /* Primary blue accent: #2563EB */
+    --primary: 221 83% 53%;
     --primary-foreground: 210 40% 98%;
 
-    --secondary: 222 30% 16%; /* #1c2436 Slate secondary, zero purple */
-    --secondary-foreground: 213 31% 88%;
+    /* Secondary container: pale slate */
+    --secondary: 214 36% 95%;
+    --secondary-foreground: 226 57% 21%;
 
-    --muted: 222 30% 14%; /* #172030 Muted container */
-    --muted-foreground: 215 16% 65%; /* #94a3b8 Slate 400 for accessible contrast */
+    /* Muted backgrounds and secondary slate text: #64748B */
+    --muted: 214 36% 95%;
+    --muted-foreground: 215 16% 47%;
 
-    --accent: 222 30% 18%; /* #212c40 Slate accent hover */
-    --accent-foreground: 210 40% 98%;
+    /* Accent hover surfaces */
+    --accent: 214 45% 93%;
+    --accent-foreground: 226 57% 21%;
 
-    --destructive: 0 72% 51%; /* #ef4444 */
+    /* Destructive red for errors/warnings */
+    --destructive: 0 84% 60%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 222 25% 18%; /* #222b3d Slate border */
-    --input: 222 25% 16%; /* #1d2536 */
-    --ring: 217 85% 60%; /* Matches primary blue */
+    /* Subtle blue-grey borders: #DCE5F0 */
+    --border: 213 40% 90%;
+    --input: 213 40% 90%;
+    --ring: 221 83% 53%;
 
-    --chart-1: 217 85% 60%;
-    --chart-2: 173 80% 40%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
+    --chart-1: 221 83% 53%;
+    --chart-2: 160 84% 39%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 215 16% 47%;
+    --chart-5: 0 84% 60%;
     --radius: 0.5rem;
 
-    --sidebar-background: 222 47% 8%;
-    --sidebar-foreground: 213 31% 91%;
-    --sidebar-primary: 217 85% 60%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 226 57% 21%;
+    --sidebar-primary: 221 83% 53%;
     --sidebar-primary-foreground: 210 40% 98%;
-    --sidebar-accent: 222 30% 18%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 222 25% 18%;
-    --sidebar-ring: 217 85% 60%;
+    --sidebar-accent: 214 45% 93%;
+    --sidebar-accent-foreground: 226 57% 21%;
+    --sidebar-border: 213 40% 90%;
+    --sidebar-ring: 221 83% 53%;
   }
 
   .dark {

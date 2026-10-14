@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'CDN Sim',
-  description: 'Simulate CDN performance and explore content caching strategies.',
+  title: 'CDN Video Streaming Simulator',
+  description: 'Simulate and compare video streaming performance between low-latency edge servers and high-latency origin servers.',
 };
 
 export default function RootLayout({
@@ -24,7 +24,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}>
         {children}
         <Toaster />
