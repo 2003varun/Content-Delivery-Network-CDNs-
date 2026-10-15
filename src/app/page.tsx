@@ -107,8 +107,26 @@ export default function CdnSimPage() {
       setSelectedVideo(video);
       setLocalVideoSrc(video.hqSrc);
       setRemoteVideoSrc(video.hqSrc);
-      setLocalMetrics(prev => ({ ...prev, measuredStartupTimeMs: null, playbackState: 'loading' }));
-      setRemoteMetrics(prev => ({ ...prev, measuredStartupTimeMs: null, playbackState: 'loading' }));
+      setLocalMetrics(prev => ({
+        ...prev,
+        measuredStartupTimeMs: null,
+        playbackState: 'loading',
+        stallCount: 0,
+        totalStallDurationMs: 0,
+        currentStallDurationMs: 0,
+        lastStallDurationMs: null,
+        currentResolution: '',
+      }));
+      setRemoteMetrics(prev => ({
+        ...prev,
+        measuredStartupTimeMs: null,
+        playbackState: 'loading',
+        stallCount: 0,
+        totalStallDurationMs: 0,
+        currentStallDurationMs: 0,
+        lastStallDurationMs: null,
+        currentResolution: '',
+      }));
       addTimelineEvent({
         player: 'system',
         type: 'source',
@@ -152,8 +170,26 @@ export default function CdnSimPage() {
 
     setLocalVideoSrc(newObjectUrl);
     setRemoteVideoSrc(newObjectUrl);
-    setLocalMetrics(prev => ({ ...prev, measuredStartupTimeMs: null, playbackState: 'loading' }));
-    setRemoteMetrics(prev => ({ ...prev, measuredStartupTimeMs: null, playbackState: 'loading' }));
+    setLocalMetrics(prev => ({
+      ...prev,
+      measuredStartupTimeMs: null,
+      playbackState: 'loading',
+      stallCount: 0,
+      totalStallDurationMs: 0,
+      currentStallDurationMs: 0,
+      lastStallDurationMs: null,
+      currentResolution: '',
+    }));
+    setRemoteMetrics(prev => ({
+      ...prev,
+      measuredStartupTimeMs: null,
+      playbackState: 'loading',
+      stallCount: 0,
+      totalStallDurationMs: 0,
+      currentStallDurationMs: 0,
+      lastStallDurationMs: null,
+      currentResolution: '',
+    }));
 
     addTimelineEvent({
       player: 'system',
@@ -175,8 +211,26 @@ export default function CdnSimPage() {
       setSelectedVideo(defaultVideo);
       setLocalVideoSrc(defaultVideo.hqSrc);
       setRemoteVideoSrc(defaultVideo.hqSrc);
-      setLocalMetrics(prev => ({ ...prev, measuredStartupTimeMs: null, playbackState: 'loading' }));
-      setRemoteMetrics(prev => ({ ...prev, measuredStartupTimeMs: null, playbackState: 'loading' }));
+      setLocalMetrics(prev => ({
+        ...prev,
+        measuredStartupTimeMs: null,
+        playbackState: 'loading',
+        stallCount: 0,
+        totalStallDurationMs: 0,
+        currentStallDurationMs: 0,
+        lastStallDurationMs: null,
+        currentResolution: '',
+      }));
+      setRemoteMetrics(prev => ({
+        ...prev,
+        measuredStartupTimeMs: null,
+        playbackState: 'loading',
+        stallCount: 0,
+        totalStallDurationMs: 0,
+        currentStallDurationMs: 0,
+        lastStallDurationMs: null,
+        currentResolution: '',
+      }));
       addTimelineEvent({
         player: 'system',
         type: 'source',

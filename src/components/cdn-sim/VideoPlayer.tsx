@@ -191,7 +191,8 @@ export function VideoPlayer({
 
       const activationId = currentActivationIdRef.current;
 
-      if (isRemote) {
+      // Simulated remote latency applies only to initial connection / startup
+      if (isRemote && !hasMeasuredStartupRef.current) {
         remotePlayTimeoutRef.current = setTimeout(() => {
           remotePlayTimeoutRef.current = null;
           if (currentActivationIdRef.current === activationId && videoElement) {
@@ -202,18 +203,24 @@ export function VideoPlayer({
         }, SIMULATED_REMOTE_LATENCY_MS);
       } else {
         videoElement.play().catch(error => {
-          console.error("Error playing local video:", error);
+          console.error("Error playing video:", error);
         });
       }
     };
 
-    const handleWaiting = () => {
+    const handleStallIncident = (source: 'waiting' | 'stalled') => {
       isWaitingRef.current = true;
       setIsLoading(true);
-      clearBufferingTimer();
 
-      // Check if this is a genuine buffering stall (not paused, not ended, not seeking)
-      const isGenuineStall = !videoElement.paused && !videoElement.ended && !isSeekingRef.current;
+      // Check if this is a genuine buffering stall:
+      // Must not be paused, not ended, not seeking, AND initial startup must have completed
+      const isGenuineStall =
+        !videoElement.paused &&
+        !videoElement.ended &&
+        !videoElement.seeking &&
+        !isSeekingRef.current &&
+        hasMeasuredStartupRef.current;
+
       if (isGenuineStall) {
         onPlaybackStateChangeRef.current?.('buffering');
         if (!isStallingRef.current) {
@@ -225,7 +232,7 @@ export function VideoPlayer({
             player: videoId,
             type: 'buffering_start',
             message: 'Buffering stall started',
-            details: 'Player waiting on media buffer',
+            details: source === 'stalled' ? 'Media download stalled' : 'Player waiting on media buffer',
           });
 
           // Ticker for active stall duration
@@ -235,29 +242,55 @@ export function VideoPlayer({
               onCurrentStallDurationUpdateRef.current?.(Math.round(performance.now() - stallStartTimestampRef.current));
             }
           }, 250);
+
+          // 5-second continuous buffering threshold for ABR
+          clearBufferingTimer();
+          bufferingTimerRef.current = setTimeout(() => {
+            if (!isWaitingRef.current || videoElement.paused || videoElement.ended || isSeekingRef.current) return;
+            setIsBufferingSlow(true);
+            if (onSlowBufferingRef.current && lqVideoSrc && currentSrc !== lqVideoSrc) {
+              // Finalize the stall that triggered ABR so its duration is preserved in metrics
+              if (isStallingRef.current) {
+                isStallingRef.current = false;
+                const elapsedStall = stallStartTimestampRef.current !== null
+                  ? Math.round(performance.now() - stallStartTimestampRef.current)
+                  : BUFFERING_TIMEOUT_MS;
+                stallStartTimestampRef.current = null;
+                if (stallTickerRef.current) {
+                  clearInterval(stallTickerRef.current);
+                  stallTickerRef.current = null;
+                }
+                onCurrentStallDurationUpdateRef.current?.(0);
+                if (elapsedStall > 0) {
+                  onStallEndRef.current?.(elapsedStall);
+                  onTimelineEventRef.current?.({
+                    player: videoId,
+                    type: 'buffering_end',
+                    message: `Buffering ended on ABR switch after ${elapsedStall}ms`,
+                  });
+                }
+              }
+              onSlowBufferingRef.current(videoId);
+            } else if (lqVideoSrc && currentSrc === lqVideoSrc) {
+              toast({
+                title: "Buffering Slowly",
+                description: `${title} is buffering slowly even on lower quality.`,
+                variant: "destructive",
+              });
+            } else {
+              toast({
+                title: "Buffering Slowly",
+                description: `${title} is buffering slowly. No lower quality available.`,
+                variant: "destructive",
+              });
+            }
+          }, BUFFERING_TIMEOUT_MS);
         }
       }
-
-      bufferingTimerRef.current = setTimeout(() => {
-        if (!isWaitingRef.current || videoElement.paused || videoElement.ended || isSeekingRef.current) return;
-        setIsBufferingSlow(true);
-        if (onSlowBufferingRef.current && lqVideoSrc && currentSrc !== lqVideoSrc) {
-          onSlowBufferingRef.current(videoId);
-        } else if (lqVideoSrc && currentSrc === lqVideoSrc) {
-          toast({
-            title: "Buffering Slowly",
-            description: `${title} is buffering slowly even on lower quality.`,
-            variant: "destructive",
-          });
-        } else {
-          toast({
-            title: "Buffering Slowly",
-            description: `${title} is buffering slowly. No lower quality available.`,
-            variant: "destructive",
-          });
-        }
-      }, BUFFERING_TIMEOUT_MS);
     };
+
+    const handleWaiting = () => handleStallIncident('waiting');
+    const handleStalled = () => handleStallIncident('stalled');
 
     const handlePlaying = () => {
       isWaitingRef.current = false;
@@ -296,12 +329,14 @@ export function VideoPlayer({
           stallTickerRef.current = null;
         }
         onCurrentStallDurationUpdateRef.current?.(0);
-        onStallEndRef.current?.(duration);
-        onTimelineEventRef.current?.({
-          player: videoId,
-          type: 'buffering_end',
-          message: `Buffering recovered after ${duration}ms`,
-        });
+        if (duration > 0) {
+          onStallEndRef.current?.(duration);
+          onTimelineEventRef.current?.({
+            player: videoId,
+            type: 'buffering_end',
+            message: `Buffering recovered after ${duration}ms`,
+          });
+        }
       }
     };
 
@@ -309,20 +344,42 @@ export function VideoPlayer({
       isSeekingRef.current = true;
       clearBufferingTimer();
       clearRemotePlayTimeout();
-      // Seek is an intentional user operation, not a buffering stall
+
+      // If a stall was active, close it and record the duration up to the seek
       if (isStallingRef.current) {
         isStallingRef.current = false;
+        const duration = stallStartTimestampRef.current !== null
+          ? Math.round(performance.now() - stallStartTimestampRef.current)
+          : 0;
         stallStartTimestampRef.current = null;
         if (stallTickerRef.current) {
           clearInterval(stallTickerRef.current);
           stallTickerRef.current = null;
         }
         onCurrentStallDurationUpdateRef.current?.(0);
+        if (duration > 0) {
+          onStallEndRef.current?.(duration);
+          onTimelineEventRef.current?.({
+            player: videoId,
+            type: 'buffering_end',
+            message: `Buffering ended on seek after ${duration}ms`,
+          });
+        }
+      }
+
+      // Ensure playback state reflects non-buffering state
+      if (videoElement.paused) {
+        onPlaybackStateChangeRef.current?.('paused');
+      } else {
+        onPlaybackStateChangeRef.current?.('loading');
       }
     };
 
     const handleSeeked = () => {
       isSeekingRef.current = false;
+      if (videoElement.paused) {
+        onPlaybackStateChangeRef.current?.('paused');
+      }
     };
 
     const handlePause = () => {
@@ -330,14 +387,26 @@ export function VideoPlayer({
       clearBufferingTimer();
       clearRemotePlayTimeout();
 
+      // If a stall was active, close it and record the duration up to the pause
       if (isStallingRef.current) {
         isStallingRef.current = false;
+        const duration = stallStartTimestampRef.current !== null
+          ? Math.round(performance.now() - stallStartTimestampRef.current)
+          : 0;
         stallStartTimestampRef.current = null;
         if (stallTickerRef.current) {
           clearInterval(stallTickerRef.current);
           stallTickerRef.current = null;
         }
         onCurrentStallDurationUpdateRef.current?.(0);
+        if (duration > 0) {
+          onStallEndRef.current?.(duration);
+          onTimelineEventRef.current?.({
+            player: videoId,
+            type: 'buffering_end',
+            message: `Buffering ended on pause after ${duration}ms`,
+          });
+        }
       }
 
       if (!videoElement.ended) {
@@ -357,12 +426,23 @@ export function VideoPlayer({
 
       if (isStallingRef.current) {
         isStallingRef.current = false;
+        const duration = stallStartTimestampRef.current !== null
+          ? Math.round(performance.now() - stallStartTimestampRef.current)
+          : 0;
         stallStartTimestampRef.current = null;
         if (stallTickerRef.current) {
           clearInterval(stallTickerRef.current);
           stallTickerRef.current = null;
         }
         onCurrentStallDurationUpdateRef.current?.(0);
+        if (duration > 0) {
+          onStallEndRef.current?.(duration);
+          onTimelineEventRef.current?.({
+            player: videoId,
+            type: 'buffering_end',
+            message: `Buffering ended on completion after ${duration}ms`,
+          });
+        }
       }
 
       onPlaybackStateChangeRef.current?.('ended');
@@ -377,6 +457,15 @@ export function VideoPlayer({
       isWaitingRef.current = false;
       clearBufferingTimer();
       clearRemotePlayTimeout();
+      if (isStallingRef.current) {
+        isStallingRef.current = false;
+        stallStartTimestampRef.current = null;
+        if (stallTickerRef.current) {
+          clearInterval(stallTickerRef.current);
+          stallTickerRef.current = null;
+        }
+        onCurrentStallDurationUpdateRef.current?.(0);
+      }
       onPlaybackStateChangeRef.current?.('error');
       onTimelineEventRef.current?.({
         player: videoId,
@@ -390,6 +479,7 @@ export function VideoPlayer({
     videoElement.addEventListener('loadeddata', handleLoadedData);
     videoElement.addEventListener('canplay', handleCanPlay);
     videoElement.addEventListener('waiting', handleWaiting);
+    videoElement.addEventListener('stalled', handleStalled);
     videoElement.addEventListener('playing', handlePlaying);
     videoElement.addEventListener('seeking', handleSeeking);
     videoElement.addEventListener('seeked', handleSeeked);
@@ -406,6 +496,7 @@ export function VideoPlayer({
       videoElement.removeEventListener('loadeddata', handleLoadedData);
       videoElement.removeEventListener('canplay', handleCanPlay);
       videoElement.removeEventListener('waiting', handleWaiting);
+      videoElement.removeEventListener('stalled', handleStalled);
       videoElement.removeEventListener('playing', handlePlaying);
       videoElement.removeEventListener('seeking', handleSeeking);
       videoElement.removeEventListener('seeked', handleSeeked);
