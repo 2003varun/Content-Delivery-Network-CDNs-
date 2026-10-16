@@ -20,6 +20,7 @@ import {
   Server,
   Radio,
   CheckCircle2,
+  Sliders,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -109,6 +110,8 @@ export function PerformancePanel({
         return <Layers className="h-3.5 w-3.5 text-amber-600 shrink-0" />;
       case 'source':
         return <Server className="h-3.5 w-3.5 text-blue-500 shrink-0" />;
+      case 'network':
+        return <Sliders className="h-3.5 w-3.5 text-blue-600 shrink-0" />;
       case 'ended':
         return <CheckCircle2 className="h-3.5 w-3.5 text-slate-500 shrink-0" />;
       default:

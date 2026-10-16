@@ -7,7 +7,10 @@ import type { SampleVideo, PlayerMetrics, QualitySwitchEntry, TimelineEvent, Pla
 import { VideoSelector } from '@/components/cdn-sim/VideoSelector';
 import { VideoPlayer } from '@/components/cdn-sim/VideoPlayer';
 import { PerformancePanel } from '@/components/cdn-sim/PerformancePanel';
+import { NetworkControls } from '@/components/cdn-sim/NetworkControls';
 import { ContentSuggestionTool } from '@/components/cdn-sim/ContentSuggestionTool';
+import type { NetworkConfig } from '@/types/network';
+import { DEFAULT_NETWORK_CONFIG } from '@/types/network';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -53,6 +56,9 @@ export default function CdnSimPage() {
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
   const [metricsResetToken, setMetricsResetToken] = useState<number>(0);
 
+  // Phase C1: Network Simulation State
+  const [appliedNetworkConfig, setAppliedNetworkConfig] = useState<NetworkConfig>(DEFAULT_NETWORK_CONFIG);
+
   // Bounded timeline logger (latest 100 events, newest first)
   const addTimelineEvent = useCallback((event: { player: 'local' | 'remote' | 'system'; type: TimelineEvent['type']; message: string; details?: string }) => {
     const now = new Date();
@@ -68,6 +74,46 @@ export default function CdnSimPage() {
     };
     setTimelineEvents(prev => [newEvent, ...prev.slice(0, 99)]);
   }, []);
+
+  const handleApplyNetworkConfig = useCallback((newConfig: NetworkConfig) => {
+    const now = new Date();
+    const timeStr = now.toTimeString().split(' ')[0];
+    const configWithTimestamp: NetworkConfig = {
+      ...newConfig,
+      appliedAt: timeStr,
+    };
+    setAppliedNetworkConfig(configWithTimestamp);
+    addTimelineEvent({
+      player: 'system',
+      type: 'network',
+      message: `Network applied: ${newConfig.name}`,
+      details: `Latency: ${newConfig.latencyMs}ms RTT • Bandwidth: ${newConfig.bandwidthMbps === 0 ? '0 Mbps (Offline)' : `${newConfig.bandwidthMbps} Mbps`} • Loss: ${newConfig.packetLossPercent}%`,
+    });
+    toast({
+      title: "Network Profile Applied",
+      description: `Active configuration set to ${newConfig.name} (${newConfig.latencyMs}ms RTT, ${newConfig.bandwidthMbps === 0 ? 'Offline' : `${newConfig.bandwidthMbps} Mbps`}, ${newConfig.packetLossPercent}% loss).`,
+    });
+  }, [addTimelineEvent, toast]);
+
+  const handleResetNetworkConfig = useCallback(() => {
+    const now = new Date();
+    const timeStr = now.toTimeString().split(' ')[0];
+    const configWithTimestamp: NetworkConfig = {
+      ...DEFAULT_NETWORK_CONFIG,
+      appliedAt: timeStr,
+    };
+    setAppliedNetworkConfig(configWithTimestamp);
+    addTimelineEvent({
+      player: 'system',
+      type: 'network',
+      message: `Network reset to default: ${DEFAULT_NETWORK_CONFIG.name}`,
+      details: `Latency: ${DEFAULT_NETWORK_CONFIG.latencyMs}ms RTT • Bandwidth: ${DEFAULT_NETWORK_CONFIG.bandwidthMbps} Mbps • Loss: ${DEFAULT_NETWORK_CONFIG.packetLossPercent}%`,
+    });
+    toast({
+      title: "Network Profile Reset",
+      description: `Restored default configuration: ${DEFAULT_NETWORK_CONFIG.name}.`,
+    });
+  }, [addTimelineEvent, toast]);
 
   const handleClearMonitoringData = useCallback(() => {
     setMetricsResetToken(prev => prev + 1);
@@ -487,7 +533,7 @@ export default function CdnSimPage() {
         {/* Compact Workspace Tabs (Beneath video players) */}
         <Card className="border border-border bg-card shadow-sm rounded-xl overflow-hidden">
           <CardHeader className="border-b border-border bg-slate-50/70 px-5 sm:px-6 py-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <CardTitle className="text-base sm:text-lg font-semibold tracking-tight text-foreground">
                   Simulation Workspace
@@ -495,6 +541,14 @@ export default function CdnSimPage() {
                 <CardDescription className="text-xs sm:text-sm text-muted-foreground mt-0.5">
                   Explore performance telemetry, network conditioning controls, and CDN cache behavior.
                 </CardDescription>
+              </div>
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-xs">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>
+                    Network: <strong className="font-semibold text-emerald-950">{appliedNetworkConfig.name}</strong> ({appliedNetworkConfig.latencyMs}ms RTT, {appliedNetworkConfig.bandwidthMbps === 0 ? 'Offline' : `${appliedNetworkConfig.bandwidthMbps} Mbps`})
+                  </span>
+                </span>
               </div>
             </div>
           </CardHeader>
@@ -535,40 +589,13 @@ export default function CdnSimPage() {
                 />
               </TabsContent>
 
-              {/* Tab 2: Network Controls */}
+              {/* Tab 2: Network Controls (Phase C1) */}
               <TabsContent value="network" forceMount className="mt-0 focus-visible:outline-none focus-visible:ring-0">
-                <div className="border border-dashed border-border rounded-xl p-6 sm:p-8 bg-slate-50/50 flex flex-col items-center text-center">
-                  <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-primary mb-3.5 shadow-sm">
-                    <Sliders className="h-7 w-7 text-primary" />
-                  </div>
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200 mb-2">
-                    <span>Phase C Architecture</span>
-                  </div>
-                  <h3 className="text-base sm:text-lg font-semibold text-foreground tracking-tight mb-2">
-                    Configurable Network Simulation Controls
-                  </h3>
-                  <p className="text-xs sm:text-sm text-muted-foreground max-w-xl leading-relaxed mb-6">
-                    This panel will provide dynamic network conditioning in Phase C. It will include Fast, Moderate, and Slow presets, adjustable startup latency sliders for both edge and origin servers, a configurable buffering timeout threshold, manual stream quality selection, and an adaptive bitrate (ABR) auto-switching toggle.
-                  </p>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full max-w-2xl text-left">
-                    <div className="bg-white border border-border rounded-lg p-3 shadow-sm">
-                      <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Presets</div>
-                      <div className="text-xs font-medium text-foreground mt-1">Fast / Mod / Slow</div>
-                    </div>
-                    <div className="bg-white border border-border rounded-lg p-3 shadow-sm">
-                      <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Latency Controls</div>
-                      <div className="text-xs font-medium text-foreground mt-1">0ms to 8,000ms</div>
-                    </div>
-                    <div className="bg-white border border-border rounded-lg p-3 shadow-sm">
-                      <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Buffer Threshold</div>
-                      <div className="text-xs font-medium text-foreground mt-1">1s to 10s Slider</div>
-                    </div>
-                    <div className="bg-white border border-border rounded-lg p-3 shadow-sm">
-                      <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Bitrate Modes</div>
-                      <div className="text-xs font-medium text-foreground mt-1">ABR vs Fixed Quality</div>
-                    </div>
-                  </div>
-                </div>
+                <NetworkControls
+                  appliedConfig={appliedNetworkConfig}
+                  onApplyConfig={handleApplyNetworkConfig}
+                  onResetConfig={handleResetNetworkConfig}
+                />
               </TabsContent>
 
               {/* Tab 3: Edge Cache */}
