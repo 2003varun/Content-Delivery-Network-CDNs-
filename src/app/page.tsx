@@ -11,11 +11,15 @@ import { NetworkControls } from '@/components/cdn-sim/NetworkControls';
 import { ContentSuggestionTool } from '@/components/cdn-sim/ContentSuggestionTool';
 import type { NetworkConfig } from '@/types/network';
 import { DEFAULT_NETWORK_CONFIG } from '@/types/network';
+import type { EdgeCacheState } from '@/types/cache';
+import { INITIAL_EDGE_CACHE_STATE } from '@/types/cache';
+import { EdgeCachePanel } from '@/components/cdn-sim/EdgeCachePanel';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { BarChart3, Activity, Sliders, HardDrive, Info } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 
 export default function CdnSimPage() {
   const [selectedVideo, setSelectedVideo] = useState<SampleVideo | null>(() => sampleVideos[0] || null);
@@ -58,6 +62,21 @@ export default function CdnSimPage() {
 
   // Phase C1: Network Simulation State
   const [appliedNetworkConfig, setAppliedNetworkConfig] = useState<NetworkConfig>(DEFAULT_NETWORK_CONFIG);
+
+  // Phase D: Edge Cache Simulation State
+  const [cacheState, setCacheState] = useState<EdgeCacheState>(INITIAL_EDGE_CACHE_STATE);
+
+  // Phase C2: Keep simulated delay metrics in sync with applied network latency
+  useEffect(() => {
+    setLocalMetrics(prev => ({
+      ...prev,
+      simulatedDelayMs: appliedNetworkConfig.latencyMs,
+    }));
+    setRemoteMetrics(prev => ({
+      ...prev,
+      simulatedDelayMs: 2000 + appliedNetworkConfig.latencyMs,
+    }));
+  }, [appliedNetworkConfig.latencyMs]);
 
   // Bounded timeline logger (latest 100 events, newest first)
   const addTimelineEvent = useCallback((event: { player: 'local' | 'remote' | 'system'; type: TimelineEvent['type']; message: string; details?: string }) => {
@@ -112,6 +131,21 @@ export default function CdnSimPage() {
     toast({
       title: "Network Profile Reset",
       description: `Restored default configuration: ${DEFAULT_NETWORK_CONFIG.name}.`,
+    });
+  }, [addTimelineEvent, toast]);
+
+  // Phase D: Purge Edge Cache Handler
+  const handlePurgeCache = useCallback(() => {
+    setCacheState(INITIAL_EDGE_CACHE_STATE);
+    addTimelineEvent({
+      player: 'system',
+      type: 'cache',
+      message: 'Edge Cache purged',
+      details: 'All in-memory cached video entries have been cleared',
+    });
+    toast({
+      title: "Edge Cache Purged",
+      description: "All cached items have been cleared. Next request will be a Cache MISS.",
     });
   }, [addTimelineEvent, toast]);
 
@@ -173,6 +207,66 @@ export default function CdnSimPage() {
         lastStallDurationMs: null,
         currentResolution: '',
       }));
+
+      // Phase D: Edge Cache lookup
+      const now = new Date();
+      const timeStr = now.toTimeString().split(' ')[0];
+      setCacheState(prev => {
+        const isCached = !!prev.cachedItems[video.id];
+        if (isCached) {
+          const nextHitCount = prev.cachedItems[video.id].hitCount + 1;
+          addTimelineEvent({
+            player: 'local',
+            type: 'cache',
+            message: `Edge Cache HIT: "${video.title}"`,
+            details: `Served directly from Edge Node cache (Hits: ${nextHitCount})`,
+          });
+          toast({
+            title: "Edge Cache HIT",
+            description: `"${video.title}" served directly from Edge cache.`,
+          });
+          return {
+            ...prev,
+            hits: prev.hits + 1,
+            lastStatus: 'HIT',
+            lastItemTitle: video.title,
+            cachedItems: {
+              ...prev.cachedItems,
+              [video.id]: {
+                ...prev.cachedItems[video.id],
+                hitCount: nextHitCount,
+              },
+            },
+          };
+        } else {
+          addTimelineEvent({
+            player: 'local',
+            type: 'cache',
+            message: `Edge Cache MISS: "${video.title}"`,
+            details: 'Content not found in Edge cache — fetched through Origin Server and stored in Edge cache',
+          });
+          toast({
+            title: "Edge Cache MISS",
+            description: `"${video.title}" fetched from Origin and stored in Edge cache.`,
+          });
+          return {
+            ...prev,
+            misses: prev.misses + 1,
+            lastStatus: 'MISS',
+            lastItemTitle: video.title,
+            cachedItems: {
+              ...prev.cachedItems,
+              [video.id]: {
+                id: video.id,
+                title: video.title,
+                cachedAt: timeStr,
+                hitCount: 0,
+              },
+            },
+          };
+        }
+      });
+
       addTimelineEvent({
         player: 'system',
         type: 'source',
@@ -184,7 +278,7 @@ export default function CdnSimPage() {
       setLocalVideoSrc(undefined);
       setRemoteVideoSrc(undefined);
     }
-  }, [addTimelineEvent]);
+  }, [addTimelineEvent, toast]);
 
   useEffect(() => {
     // If no video/file is active, restore default sample video
@@ -202,6 +296,38 @@ export default function CdnSimPage() {
       }
     };
   }, []);
+
+  // Phase D: Initial cache registration for default video on startup
+  useEffect(() => {
+    const defaultVideo = sampleVideos[0];
+    if (defaultVideo) {
+      const now = new Date();
+      const timeStr = now.toTimeString().split(' ')[0];
+      setCacheState(prev => {
+        if (prev.lastStatus !== null || Object.keys(prev.cachedItems).length > 0) return prev;
+        return {
+          cachedItems: {
+            [defaultVideo.id]: {
+              id: defaultVideo.id,
+              title: defaultVideo.title,
+              cachedAt: timeStr,
+              hitCount: 0,
+            },
+          },
+          hits: 0,
+          misses: 1,
+          lastStatus: 'MISS',
+          lastItemTitle: defaultVideo.title,
+        };
+      });
+      addTimelineEvent({
+        player: 'local',
+        type: 'cache',
+        message: `Initial Cache MISS: "${defaultVideo.title}"`,
+        details: 'Initial content fetched through Origin Server and populated in Edge Cache',
+      });
+    }
+  }, [addTimelineEvent]);
 
   const handleLocalFileSelect = useCallback((file: File) => {
     if (objectUrlRef.current) {
@@ -237,13 +363,73 @@ export default function CdnSimPage() {
       currentResolution: '',
     }));
 
+    // Phase D: Edge Cache lookup for uploaded file
+    const fileId = `file-${file.name}`;
+    const now = new Date();
+    const timeStr = now.toTimeString().split(' ')[0];
+    setCacheState(prev => {
+      const isCached = !!prev.cachedItems[fileId];
+      if (isCached) {
+        const nextHitCount = prev.cachedItems[fileId].hitCount + 1;
+        addTimelineEvent({
+          player: 'local',
+          type: 'cache',
+          message: `Edge Cache HIT: "${file.name}"`,
+          details: `Served directly from Edge Node cache (Hits: ${nextHitCount})`,
+        });
+        toast({
+          title: "Edge Cache HIT",
+          description: `"${file.name}" served directly from Edge cache.`,
+        });
+        return {
+          ...prev,
+          hits: prev.hits + 1,
+          lastStatus: 'HIT',
+          lastItemTitle: file.name,
+          cachedItems: {
+            ...prev.cachedItems,
+            [fileId]: {
+              ...prev.cachedItems[fileId],
+              hitCount: nextHitCount,
+            },
+          },
+        };
+      } else {
+        addTimelineEvent({
+          player: 'local',
+          type: 'cache',
+          message: `Edge Cache MISS: "${file.name}"`,
+          details: 'Uploaded file not in Edge cache — ingested and stored in Edge cache',
+        });
+        toast({
+          title: "Edge Cache MISS",
+          description: `"${file.name}" ingested and stored in Edge cache.`,
+        });
+        return {
+          ...prev,
+          misses: prev.misses + 1,
+          lastStatus: 'MISS',
+          lastItemTitle: file.name,
+          cachedItems: {
+            ...prev.cachedItems,
+            [fileId]: {
+              id: fileId,
+              title: file.name,
+              cachedAt: timeStr,
+              hitCount: 0,
+            },
+          },
+        };
+      }
+    });
+
     addTimelineEvent({
       player: 'system',
       type: 'source',
       message: `Local file uploaded: ${file.name}`,
       details: `${(file.size / (1024 * 1024)).toFixed(2)} MB • Object URL generated`,
     });
-  }, [addTimelineEvent]);
+  }, [addTimelineEvent, toast]);
 
   const handleClearLocalFile = useCallback(() => {
     if (objectUrlRef.current) {
@@ -462,12 +648,38 @@ export default function CdnSimPage() {
         {/* Video Comparison Area (Always visible above tabs) */}
         <Card className="border border-border bg-card shadow-sm rounded-xl overflow-hidden">
           <CardHeader className="border-b border-border bg-slate-50/70 px-5 sm:px-6 py-4">
-            <CardTitle className="text-lg sm:text-xl font-semibold tracking-tight text-foreground">
-              Video Streaming Comparison
-            </CardTitle>
-            <CardDescription className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-              Select a sample video or upload your own to compare playback between a simulated local edge server and a distant origin server.
-            </CardDescription>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <CardTitle className="text-lg sm:text-xl font-semibold tracking-tight text-foreground">
+                  Video Streaming Comparison
+                </CardTitle>
+                <CardDescription className="text-xs sm:text-sm text-muted-foreground mt-0.5">
+                  Select a sample video or upload your own to compare playback between a simulated local edge server and a distant origin server.
+                </CardDescription>
+              </div>
+              {/* Phase C2: Network Simulation Active Indication */}
+              <div className={cn(
+                "inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs shadow-xs transition-colors self-start sm:self-auto",
+                appliedNetworkConfig.bandwidthMbps === 0
+                  ? "bg-destructive/10 text-destructive border-destructive/30"
+                  : "bg-blue-50/80 text-blue-900 border-blue-200/80"
+              )}>
+                <span className={cn(
+                  "h-2 w-2 rounded-full",
+                  appliedNetworkConfig.bandwidthMbps === 0 ? "bg-destructive animate-pulse" : "bg-blue-600"
+                )} />
+                <div className="flex flex-col sm:flex-row sm:items-baseline sm:gap-2">
+                  <span className="font-semibold">
+                    Network Simulation: {appliedNetworkConfig.name}
+                  </span>
+                  <span className="text-[11px] opacity-80 font-mono">
+                    {appliedNetworkConfig.bandwidthMbps === 0
+                      ? "Connection unavailable"
+                      : `${appliedNetworkConfig.latencyMs} ms RTT • ${appliedNetworkConfig.bandwidthMbps} Mbps`}
+                  </span>
+                </div>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="p-5 sm:p-6 space-y-6">
             <div className="flex flex-col lg:flex-row justify-between items-start gap-6">
@@ -493,6 +705,7 @@ export default function CdnSimPage() {
                   title={localPlayerTitle}
                   isRemote={false}
                   resetToken={metricsResetToken}
+                  networkConfig={appliedNetworkConfig}
                   onSlowBuffering={handleLocalSlowBuffering}
                   onPlaybackStateChange={handleLocalPlaybackStateChange}
                   onStartupMeasured={handleLocalStartupMeasured}
@@ -511,6 +724,7 @@ export default function CdnSimPage() {
                   title={remotePlayerTitle}
                   isRemote={true}
                   resetToken={metricsResetToken}
+                  networkConfig={appliedNetworkConfig}
                   onSlowBuffering={handleRemoteSlowBuffering}
                   onPlaybackStateChange={handleRemotePlaybackStateChange}
                   onStartupMeasured={handleRemoteStartupMeasured}
@@ -543,10 +757,18 @@ export default function CdnSimPage() {
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2 self-start sm:self-auto">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-xs">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className={cn(
+                  "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border shadow-xs transition-colors",
+                  appliedNetworkConfig.bandwidthMbps === 0
+                    ? "bg-destructive/10 text-destructive border-destructive/30"
+                    : "bg-emerald-50 text-emerald-800 border-emerald-200"
+                )}>
+                  <span className={cn(
+                    "h-1.5 w-1.5 rounded-full",
+                    appliedNetworkConfig.bandwidthMbps === 0 ? "bg-destructive animate-pulse" : "bg-emerald-500 animate-pulse"
+                  )} />
                   <span>
-                    Network: <strong className="font-semibold text-emerald-950">{appliedNetworkConfig.name}</strong> ({appliedNetworkConfig.latencyMs}ms RTT, {appliedNetworkConfig.bandwidthMbps === 0 ? 'Offline' : `${appliedNetworkConfig.bandwidthMbps} Mbps`})
+                    Network: <strong className="font-semibold">{appliedNetworkConfig.name}</strong> ({appliedNetworkConfig.bandwidthMbps === 0 ? 'Offline • Connection unavailable' : `${appliedNetworkConfig.latencyMs}ms RTT, ${appliedNetworkConfig.bandwidthMbps} Mbps`})
                   </span>
                 </span>
               </div>
@@ -598,40 +820,12 @@ export default function CdnSimPage() {
                 />
               </TabsContent>
 
-              {/* Tab 3: Edge Cache */}
+              {/* Tab 3: Edge Cache (Phase D) */}
               <TabsContent value="cache" forceMount className="mt-0 focus-visible:outline-none focus-visible:ring-0">
-                <div className="border border-dashed border-border rounded-xl p-6 sm:p-8 bg-slate-50/50 flex flex-col items-center text-center">
-                  <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-primary mb-3.5 shadow-sm">
-                    <HardDrive className="h-7 w-7 text-primary" />
-                  </div>
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200 mb-2">
-                    <span>Phase D Architecture</span>
-                  </div>
-                  <h3 className="text-base sm:text-lg font-semibold text-foreground tracking-tight mb-2">
-                    Deterministic CDN Edge Cache Simulator
-                  </h3>
-                  <p className="text-xs sm:text-sm text-muted-foreground max-w-xl leading-relaxed mb-6">
-                    This panel will model deterministic CDN edge caching in Phase D. It will demonstrate the client $\to$ edge cache $\to$ origin request flow, cache hit and miss transitions, configurable Time-to-Live (TTL), hit-ratio calculations, simulated origin offload metrics, and cache-clearing actions.
-                  </p>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full max-w-2xl text-left">
-                    <div className="bg-white border border-border rounded-lg p-3 shadow-sm">
-                      <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Request Flow</div>
-                      <div className="text-xs font-medium text-foreground mt-1">Client $\to$ Cache $\to$ Origin</div>
-                    </div>
-                    <div className="bg-white border border-border rounded-lg p-3 shadow-sm">
-                      <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">TTL Expiry</div>
-                      <div className="text-xs font-medium text-foreground mt-1">Configurable Seconds</div>
-                    </div>
-                    <div className="bg-white border border-border rounded-lg p-3 shadow-sm">
-                      <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Hit Ratio</div>
-                      <div className="text-xs font-medium text-foreground mt-1">Telemetry Calculation</div>
-                    </div>
-                    <div className="bg-white border border-border rounded-lg p-3 shadow-sm">
-                      <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Origin Offload</div>
-                      <div className="text-xs font-medium text-foreground mt-1">Latency Savings</div>
-                    </div>
-                  </div>
-                </div>
+                <EdgeCachePanel
+                  cacheState={cacheState}
+                  onPurgeCache={handlePurgeCache}
+                />
               </TabsContent>
             </Tabs>
           </CardContent>

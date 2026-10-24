@@ -3,10 +3,16 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, WifiOff } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 import type { PlaybackState, TimelineEvent } from '@/types/video';
+import type { NetworkConfig } from '@/types/network';
+import {
+  calculateEffectiveStartupDelay,
+  isNetworkOffline,
+  getBandwidthPlaybackBehavior,
+} from './network-simulation';
 
 interface VideoPlayerProps {
   videoSrc: string;
@@ -24,9 +30,9 @@ interface VideoPlayerProps {
   onCurrentStallDurationUpdate?: (currentDurationMs: number) => void;
   onResolutionDetected?: (resolution: string) => void;
   onTimelineEvent?: (event: { player: 'local' | 'remote'; type: TimelineEvent['type']; message: string; details?: string }) => void;
+  networkConfig?: NetworkConfig;
 }
 
-const SIMULATED_REMOTE_LATENCY_MS = 2000; // 2 seconds
 const BUFFERING_TIMEOUT_MS = 5000; // 5 seconds
 
 export function VideoPlayer({
@@ -45,6 +51,7 @@ export function VideoPlayer({
   onCurrentStallDurationUpdate,
   onResolutionDetected,
   onTimelineEvent,
+  networkConfig,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [currentSrc, setCurrentSrc] = useState(videoSrc);
@@ -65,6 +72,13 @@ export function VideoPlayer({
   const stallStartTimestampRef = useRef<number | null>(null);
   const stallTickerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Phase C2: Network Simulation refs
+  const networkConfigRef = useRef(networkConfig);
+  networkConfigRef.current = networkConfig;
+  const isSimulatedStallRef = useRef(false);
+  const bandwidthStallTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const bandwidthRecoveryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // Stable callback refs to prevent re-triggering effects on parent re-renders
   const onPlaybackStateChangeRef = useRef(onPlaybackStateChange);
   onPlaybackStateChangeRef.current = onPlaybackStateChange;
@@ -83,12 +97,26 @@ export function VideoPlayer({
   const onSlowBufferingRef = useRef(onSlowBuffering);
   onSlowBufferingRef.current = onSlowBuffering;
 
+  const clearBandwidthTimers = () => {
+    if (bandwidthStallTimeoutRef.current) {
+      clearTimeout(bandwidthStallTimeoutRef.current);
+      bandwidthStallTimeoutRef.current = null;
+    }
+    if (bandwidthRecoveryTimeoutRef.current) {
+      clearTimeout(bandwidthRecoveryTimeoutRef.current);
+      bandwidthRecoveryTimeoutRef.current = null;
+    }
+    isSimulatedStallRef.current = false;
+  };
+
   // Source change handling
   useEffect(() => {
     setCurrentSrc(videoSrc);
     setIsLoading(true);
     setIsBufferingSlow(false);
     isWaitingRef.current = false;
+    clearBandwidthTimers();
+
     if (bufferingTimerRef.current) {
       clearTimeout(bufferingTimerRef.current);
       bufferingTimerRef.current = null;
@@ -113,6 +141,19 @@ export function VideoPlayer({
     activationTimestampRef.current = performance.now();
     hasMeasuredStartupRef.current = false;
 
+    // Check if applied network configuration is offline
+    if (isNetworkOffline(networkConfigRef.current)) {
+      setIsLoading(false);
+      onPlaybackStateChangeRef.current?.('error');
+      onTimelineEventRef.current?.({
+        player: videoId,
+        type: 'source',
+        message: `Source activated: ${title} (Offline)`,
+        details: 'Simulated network is offline — playback unavailable',
+      });
+      return;
+    }
+
     onPlaybackStateChangeRef.current?.('loading');
     onTimelineEventRef.current?.({
       player: videoId,
@@ -131,9 +172,130 @@ export function VideoPlayer({
     }
   }, [resetToken]);
 
+  // Phase C2: React to network configuration changes during active playback
+  useEffect(() => {
+    const videoElement = videoRef.current;
+    if (!videoElement) return;
+
+    // If applied network configuration transitions to offline:
+    if (isNetworkOffline(networkConfig)) {
+      clearBandwidthTimers();
+      if (bufferingTimerRef.current) {
+        clearTimeout(bufferingTimerRef.current);
+        bufferingTimerRef.current = null;
+      }
+      if (remotePlayTimeoutRef.current) {
+        clearTimeout(remotePlayTimeoutRef.current);
+        remotePlayTimeoutRef.current = null;
+      }
+      videoElement.pause();
+      setIsLoading(false);
+      onPlaybackStateChangeRef.current?.('error');
+      onTimelineEventRef.current?.({
+        player: videoId,
+        type: 'error',
+        message: 'Playback halted: Applied network configuration is Offline',
+        details: 'Connection unavailable',
+      });
+      return;
+    }
+
+    // If transitioning from offline back to online before startup completed:
+    if (!isNetworkOffline(networkConfig) && !hasMeasuredStartupRef.current && videoElement.paused) {
+      const currentNetworkLatency = networkConfig?.latencyMs ?? 0;
+      const { totalDelayMs } = calculateEffectiveStartupDelay(isRemote, currentNetworkLatency);
+      setIsLoading(true);
+      onPlaybackStateChangeRef.current?.('loading');
+      if (remotePlayTimeoutRef.current) clearTimeout(remotePlayTimeoutRef.current);
+      remotePlayTimeoutRef.current = setTimeout(() => {
+        remotePlayTimeoutRef.current = null;
+        setIsLoading(false);
+        if (videoRef.current) {
+          videoRef.current.play().catch(e => console.error("Error starting video after restoring network:", e));
+        }
+      }, totalDelayMs);
+      return;
+    }
+
+    // If startup has completed and network configuration changes:
+    if (hasMeasuredStartupRef.current) {
+      const wasSimulatedStall = isSimulatedStallRef.current;
+      clearBandwidthTimers();
+      const isLq = currentSrc === lqVideoSrc;
+      const currentBandwidth = networkConfig?.bandwidthMbps ?? 25;
+      const behavior = getBandwidthPlaybackBehavior(currentBandwidth, isLq, true);
+
+      // Case A: The player was currently stalled by the bandwidth simulation
+      if (wasSimulatedStall) {
+        if (!behavior.shouldStall) {
+          // Recover immediately if profile changed to non-stalling (e.g. Fast / 4G)
+          isSimulatedStallRef.current = false;
+          isWaitingRef.current = false;
+          setIsLoading(false);
+          setIsBufferingSlow(false);
+
+          // Clear the continuous 5-second ABR timer
+          if (bufferingTimerRef.current) {
+            clearTimeout(bufferingTimerRef.current);
+            bufferingTimerRef.current = null;
+          }
+
+          // Conclude any active stall metric cleanly
+          if (isStallingRef.current) {
+            isStallingRef.current = false;
+            const duration = Math.round(performance.now() - (stallStartTimestampRef.current ?? performance.now()));
+            stallStartTimestampRef.current = null;
+            if (stallTickerRef.current) {
+              clearInterval(stallTickerRef.current);
+              stallTickerRef.current = null;
+            }
+            onCurrentStallDurationUpdateRef.current?.(0);
+            if (duration > 0) {
+              onStallEndRef.current?.(duration);
+              onTimelineEventRef.current?.({
+                player: videoId,
+                type: 'buffering_end',
+                message: `Buffering recovered after ${duration}ms (Network restored to ${networkConfig?.name ?? 'Fast / 4G'})`,
+              });
+            }
+          }
+
+          onPlaybackStateChangeRef.current?.('playing');
+          if (!videoElement.ended && !isSeekingRef.current) {
+            videoElement.play().catch(e => console.error("Error resuming playback after network profile change:", e));
+          }
+        }
+      }
+      // Case B: Currently playing actively
+      else if (!videoElement.paused && !videoElement.ended && !isSeekingRef.current) {
+        if (behavior.shouldStall) {
+          bandwidthStallTimeoutRef.current = setTimeout(() => {
+            bandwidthStallTimeoutRef.current = null;
+            if (videoElement.paused || videoElement.ended || isSeekingRef.current) return;
+            isSimulatedStallRef.current = true;
+            videoElement.pause();
+            // Trigger stall via standard handler
+            videoElement.dispatchEvent(new Event('waiting'));
+
+            if (behavior.stallDurationMs !== null) {
+              bandwidthRecoveryTimeoutRef.current = setTimeout(() => {
+                bandwidthRecoveryTimeoutRef.current = null;
+                isSimulatedStallRef.current = false;
+                if (!videoElement.ended && !isSeekingRef.current) {
+                  videoElement.play().catch(e => console.error("Error resuming playback after simulated stall:", e));
+                }
+              }, behavior.stallDurationMs);
+            }
+          }, behavior.delayBeforeStallMs);
+        }
+      }
+    }
+  }, [networkConfig, currentSrc, lqVideoSrc, videoId, isRemote]);
+
   // Clean up interval and timeouts on unmount
   useEffect(() => {
     return () => {
+      clearBandwidthTimers();
       if (stallTickerRef.current) {
         clearInterval(stallTickerRef.current);
         stallTickerRef.current = null;
@@ -185,23 +347,41 @@ export function VideoPlayer({
 
     const handleCanPlay = () => {
       isWaitingRef.current = false;
-      setIsLoading(false);
       clearBufferingTimer();
       clearRemotePlayTimeout();
+      clearBandwidthTimers();
+
+      // Block playback start if applied network is offline
+      if (isNetworkOffline(networkConfigRef.current)) {
+        setIsLoading(false);
+        onPlaybackStateChangeRef.current?.('error');
+        onTimelineEventRef.current?.({
+          player: videoId,
+          type: 'error',
+          message: 'Playback blocked: Simulated network is offline',
+          details: 'Connection unavailable',
+        });
+        return;
+      }
 
       const activationId = currentActivationIdRef.current;
+      const currentNetworkLatency = networkConfigRef.current?.latencyMs ?? 0;
+      const { totalDelayMs } = calculateEffectiveStartupDelay(isRemote, currentNetworkLatency);
 
-      // Simulated remote latency applies only to initial connection / startup
-      if (isRemote && !hasMeasuredStartupRef.current) {
+      // Phase C2: Apply simulated startup delay (base server latency + network RTT)
+      if (!hasMeasuredStartupRef.current && totalDelayMs > 0) {
+        setIsLoading(true); // Maintain visual loading state during startup delay
         remotePlayTimeoutRef.current = setTimeout(() => {
           remotePlayTimeoutRef.current = null;
+          setIsLoading(false);
           if (currentActivationIdRef.current === activationId && videoElement) {
             videoElement.play().catch(error => {
-              console.error("Error playing remote video:", error);
+              console.error("Error playing video:", error);
             });
           }
-        }, SIMULATED_REMOTE_LATENCY_MS);
+        }, totalDelayMs);
       } else {
+        setIsLoading(false);
         videoElement.play().catch(error => {
           console.error("Error playing video:", error);
         });
@@ -213,9 +393,9 @@ export function VideoPlayer({
       setIsLoading(true);
 
       // Check if this is a genuine buffering stall:
-      // Must not be paused, not ended, not seeking, AND initial startup must have completed
+      // Must not be paused by user (unless commanded by simulation stall), not ended, not seeking, AND initial startup must have completed
       const isGenuineStall =
-        !videoElement.paused &&
+        (!videoElement.paused || isSimulatedStallRef.current) &&
         !videoElement.ended &&
         !videoElement.seeking &&
         !isSeekingRef.current &&
@@ -232,7 +412,11 @@ export function VideoPlayer({
             player: videoId,
             type: 'buffering_start',
             message: 'Buffering stall started',
-            details: source === 'stalled' ? 'Media download stalled' : 'Player waiting on media buffer',
+            details: source === 'stalled'
+              ? 'Media download stalled'
+              : isSimulatedStallRef.current
+                ? 'Simulated bandwidth constraint buffer depletion'
+                : 'Player waiting on media buffer',
           });
 
           // Ticker for active stall duration
@@ -246,7 +430,7 @@ export function VideoPlayer({
           // 5-second continuous buffering threshold for ABR
           clearBufferingTimer();
           bufferingTimerRef.current = setTimeout(() => {
-            if (!isWaitingRef.current || videoElement.paused || videoElement.ended || isSeekingRef.current) return;
+            if (!isWaitingRef.current || (videoElement.paused && !isSimulatedStallRef.current) || videoElement.ended || isSeekingRef.current) return;
             setIsBufferingSlow(true);
             if (onSlowBufferingRef.current && lqVideoSrc && currentSrc !== lqVideoSrc) {
               // Finalize the stall that triggered ABR so its duration is preserved in metrics
@@ -270,6 +454,7 @@ export function VideoPlayer({
                   });
                 }
               }
+              clearBandwidthTimers();
               onSlowBufferingRef.current(videoId);
             } else if (lqVideoSrc && currentSrc === lqVideoSrc) {
               toast({
@@ -300,6 +485,9 @@ export function VideoPlayer({
       clearRemotePlayTimeout();
       onPlaybackStateChangeRef.current?.('playing');
 
+      const currentNetworkLatency = networkConfigRef.current?.latencyMs ?? 0;
+      const { baseDelayMs, networkDelayMs, totalDelayMs } = calculateEffectiveStartupDelay(isRemote, currentNetworkLatency);
+
       // 1. Measure Startup Time on first playing event for this activation
       if (!hasMeasuredStartupRef.current && activationTimestampRef.current !== null) {
         hasMeasuredStartupRef.current = true;
@@ -309,7 +497,7 @@ export function VideoPlayer({
           player: videoId,
           type: 'startup',
           message: `Startup completed in ${startupDuration}ms`,
-          details: `Simulated delay: ${isRemote ? '2,000ms' : '0ms'} | Monotonic elapsed: ${startupDuration}ms`,
+          details: `Server latency: ${baseDelayMs}ms • Network RTT: ${networkDelayMs}ms (Total delay: ${totalDelayMs}ms) | Monotonic elapsed: ${startupDuration}ms`,
         });
       } else {
         onTimelineEventRef.current?.({
@@ -338,9 +526,36 @@ export function VideoPlayer({
           });
         }
       }
+
+      // 3. Phase C2: Bandwidth simulation - schedule deterministic buffering pressure
+      clearBandwidthTimers();
+      const currentBandwidth = networkConfigRef.current?.bandwidthMbps ?? 25;
+      const isLq = currentSrc === lqVideoSrc;
+      const behavior = getBandwidthPlaybackBehavior(currentBandwidth, isLq, false);
+
+      if (behavior.shouldStall) {
+        bandwidthStallTimeoutRef.current = setTimeout(() => {
+          bandwidthStallTimeoutRef.current = null;
+          if (videoElement.paused || videoElement.ended || isSeekingRef.current) return;
+          isSimulatedStallRef.current = true;
+          videoElement.pause();
+          handleStallIncident('waiting');
+
+          if (behavior.stallDurationMs !== null) {
+            bandwidthRecoveryTimeoutRef.current = setTimeout(() => {
+              bandwidthRecoveryTimeoutRef.current = null;
+              isSimulatedStallRef.current = false;
+              if (!videoElement.ended && !isSeekingRef.current) {
+                videoElement.play().catch(e => console.error("Error resuming playback after simulated stall:", e));
+              }
+            }, behavior.stallDurationMs);
+          }
+        }, behavior.delayBeforeStallMs);
+      }
     };
 
     const handleSeeking = () => {
+      clearBandwidthTimers();
       isSeekingRef.current = true;
       clearBufferingTimer();
       clearRemotePlayTimeout();
@@ -383,6 +598,8 @@ export function VideoPlayer({
     };
 
     const handlePause = () => {
+      if (isSimulatedStallRef.current) return; // Ignore programmatic pause from simulation stall
+      clearBandwidthTimers();
       isWaitingRef.current = false;
       clearBufferingTimer();
       clearRemotePlayTimeout();
@@ -420,6 +637,7 @@ export function VideoPlayer({
     };
 
     const handleEnded = () => {
+      clearBandwidthTimers();
       isWaitingRef.current = false;
       clearBufferingTimer();
       clearRemotePlayTimeout();
@@ -454,6 +672,7 @@ export function VideoPlayer({
     };
 
     const handleError = () => {
+      clearBandwidthTimers();
       isWaitingRef.current = false;
       clearBufferingTimer();
       clearRemotePlayTimeout();
@@ -490,6 +709,7 @@ export function VideoPlayer({
     videoElement.muted = true;
 
     return () => {
+      clearBandwidthTimers();
       isWaitingRef.current = false;
       videoElement.removeEventListener('loadstart', handleLoadStart);
       videoElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
@@ -508,20 +728,29 @@ export function VideoPlayer({
     };
   }, [currentSrc, isRemote, title, videoId, lqVideoSrc, toast]);
 
+  const isOffline = isNetworkOffline(networkConfig);
+  const currentNetworkLatency = networkConfig?.latencyMs ?? 0;
+  const effectiveDelayMs = isRemote ? (2000 + currentNetworkLatency) : currentNetworkLatency;
+
   return (
     <Card className={cn("w-full shadow-sm rounded-xl overflow-hidden bg-card border border-border transition-all", className)}>
       <CardHeader className="p-3.5 sm:p-4 border-b border-border bg-slate-50/80 flex flex-wrap items-center justify-between gap-2">
         <CardTitle className="text-sm sm:text-base font-semibold tracking-tight text-foreground truncate">{title}</CardTitle>
         <div className="flex items-center gap-2">
-          {isRemote ? (
+          {isOffline ? (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-red-50 text-red-800 border border-red-200 shadow-sm">
+              <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+              Offline
+            </span>
+          ) : isRemote ? (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-200 shadow-sm">
               <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-              Origin (+2s)
+              Origin ({effectiveDelayMs}ms)
             </span>
           ) : (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-sm">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              Edge (0ms)
+              Edge ({effectiveDelayMs}ms)
             </span>
           )}
           {lqVideoSrc && (
@@ -548,7 +777,21 @@ export function VideoPlayer({
           className="w-full h-full object-contain"
           playsInline // Important for mobile
         />
-        {isLoading && (
+        {/* Controlled Offline Overlay */}
+        {isOffline && (
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-950/85 backdrop-blur-[2px] transition-opacity z-10">
+            <div className="text-center p-4 max-w-xs">
+              <div className="h-10 w-10 rounded-full bg-destructive/10 border border-destructive/20 flex items-center justify-center mx-auto mb-2.5 text-destructive">
+                <WifiOff className="h-5 w-5" />
+              </div>
+              <p className="font-semibold text-sm text-white">Network Simulation: Offline</p>
+              <p className="text-xs text-slate-300 mt-1">
+                Connection is currently unavailable. Apply an online network profile in Network Controls to resume.
+              </p>
+            </div>
+          </div>
+        )}
+        {isLoading && !isOffline && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/75 backdrop-blur-[2px] transition-opacity">
             <div className="text-white text-center p-4">
               <svg className="animate-spin h-8 w-8 text-blue-500 mx-auto mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -556,11 +799,20 @@ export function VideoPlayer({
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
               <p className="font-medium text-sm">Loading video...</p>
-              {isRemote && <p className="text-xs text-slate-300 mt-1">(Simulating remote server latency)</p>}
+              {isRemote && (
+                <p className="text-xs text-slate-300 mt-1">
+                  (Simulating {2000 + currentNetworkLatency}ms origin + RTT latency)
+                </p>
+              )}
+              {!isRemote && currentNetworkLatency > 0 && (
+                <p className="text-xs text-slate-300 mt-1">
+                  (Simulating {currentNetworkLatency}ms edge RTT latency)
+                </p>
+              )}
             </div>
           </div>
         )}
-        {isBufferingSlow && !isLoading && (
+        {isBufferingSlow && !isLoading && !isOffline && (
           <div className="absolute top-3 left-3 bg-destructive/95 backdrop-blur-sm text-destructive-foreground px-2.5 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 shadow-md">
             <AlertCircle size={14} />
             <span>Buffering slowly</span>

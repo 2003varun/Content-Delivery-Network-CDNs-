@@ -37,7 +37,7 @@ export interface TimelineEvent {
   timestamp: number;
   formattedTime: string;
   player: 'local' | 'remote' | 'system';
-  type: 'source' | 'startup' | 'play' | 'pause' | 'buffering_start' | 'buffering_end' | 'quality' | 'ended' | 'error' | 'network';
+  type: 'source' | 'startup' | 'play' | 'pause' | 'buffering_start' | 'buffering_end' | 'quality' | 'ended' | 'error' | 'network' | 'cache';
   message: string;
   details?: string;
 }
